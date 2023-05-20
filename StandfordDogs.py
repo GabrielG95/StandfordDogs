@@ -88,8 +88,6 @@ test_dataloader = DataLoader(dataset=test_data,
 print(f'train_dataloader: {train_dataloader}, length: {len(train_dataloader)}')
 print(f'test_dataloader: {test_dataloader}, length: {len(test_dataloader)}')
 
-#TODO: Edit or remove L1 reg, causing underfitting. Maybe try L2 reg.
-
 # Make model
 class CNNModelV0(nn.Module):
     def __init__(self,
