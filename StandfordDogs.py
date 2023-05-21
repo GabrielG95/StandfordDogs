@@ -8,6 +8,7 @@ from timeit import default_timer as timer
 from torch.nn.modules import transformer
 from torch.utils.data import DataLoader, dataloader
 import torchvision
+from sklearn.metrics import confusion_matrix
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 from torchvision.transforms import transforms
@@ -108,8 +109,6 @@ class CNNModelV0(nn.Module):
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                # help with overfitting
-                # nn.Dropout(p=0.5, inplace=False),
                 nn.BatchNorm2d(hidden_units),
                 nn.ReLU(),
                 nn.MaxPool2d(kernel_size=2)
@@ -127,12 +126,45 @@ class CNNModelV0(nn.Module):
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                # help with overfitting
-                # nn.Dropout(p=0.5, inplace=False),
                 nn.BatchNorm2d(hidden_units),
                 nn.ReLU(),
                 nn.MaxPool2d(kernel_size=2)
                     )
+              self.conv_block_3 = nn.Sequential(
+                nn.Conv2d(in_channels=hidden_units,
+                          out_channels=hidden_units,
+                          kernel_size=3,
+                          padding=1,
+                          stride=1),
+                nn.BatchNorm2d(hidden_units),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=hidden_units,
+                          out_channels=hidden_units,
+                          kernel_size=3,
+                          padding=1,
+                          stride=1),
+                nn.BatchNorm2d(hidden_units),
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2)
+                    )
+        self.conv_block_4 = nn.Sequential(
+                nn.Conv2d(in_channels=hidden_units,
+                          out_channels=hidden_units,
+                          kernel_size=3,
+                          padding=1,
+                          stride=1),
+                nn.BatchNorm2d(hidden_units),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=hidden_units,
+                          out_channels=hidden_units,
+                          kernel_size=3,
+                          padding=1,
+                          stride=1),
+                nn.BatchNorm2d(hidden_units),
+                nn.ReLU(),
+                nn.MaxPool2d(kernel_size=2)
+        )
+        
         self.classifier = nn.Sequential(
                 nn.Flatten(),
                 nn.Linear(in_features=hidden_units*64,
@@ -143,6 +175,8 @@ class CNNModelV0(nn.Module):
     def forward(self, x):
         x = self.conv_block_1(x)
         x = self.conv_block_2(x)
+        x = self.conv_block_3(x)
+        x = self.conv_block_4(x)
         x = self.classifier(x)
         return x
 
@@ -219,7 +253,7 @@ def test_step(model: torch.nn.Module,
     print(f'Test loss: {test_loss:.4f}, Test acc: {test_acc:.2f}%')
 
 train_time_start = timer()
-epochs = 50
+epochs = 20
 for epoch in tqdm(range(epochs)):
     print(f'Epoch: {epoch}\n------------')
     train_step(model=model_0,
@@ -236,15 +270,25 @@ train_time_end = timer()
 total_train_time = train_time_end-train_time_start
 print(f'Total train time: {total_train_time}')
 
-# Get predictions
-pred_img = []
-pred_labels = []
+# create confusion matrix to visualize true values with labels
 model_0.eval()
-with torch.inference_mode():
-    for i, sample in train_dataloader:
-        pred_img.append(i)
-        pred_labels.append(sample)
+true_labels = []
+pred_labels = []
+for img, labels in test_dataloader:
+    img, = img.to(device)
+    labels = labels.to(device)
+    outputs = model_0(img)
+    _, preds = torch.max(outputs.data, 1)
+    true_labels.extend(labels.cpu().numpy())
+    pred_labels.extend(preds.cpu().numpy())
+    
+# convert list to numpy 
+true_labels = np.array(true_labels)
+pred_labels = np.array(pred_labels)
 
+# compute cm
+cm = confusion_matrix(true_labels, pred_labels)
+print(cm)
 
 
 
