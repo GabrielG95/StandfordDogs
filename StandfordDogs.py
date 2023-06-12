@@ -1,4 +1,5 @@
 import torch
+import random
 import pandas as pd
 from torch import nn
 from torch.utils import data
@@ -19,28 +20,11 @@ import matplotlib.pyplot as plt
 device = torch.device('mps')
 print(f'Device: {device}')
 
-# Define a custom transform function that standardizes the data
-class StandardizeTransform(object):
-    # creates a 'StandardScaler' object called self.scaler
-    # this object is uded to compute the mean and standard deviation of the input data
-    def __init__(self):
-        self.scaler = StandardScaler()
-
-    # used to apply the transformation to the input data 'x' 
-    def __call__(self, x):
-        # we reshape it in order to standardize our data and then
-        # we reshape it back to its original form before returning the data.
-        x = self.scaler.fit_transform(x.reshape(-1, x.shape[-1])).reshape(x.shape)
-        return x
-
 # Define data transformation
 transform = transforms.Compose([
-    transforms.Resize((32,32)),
     transforms.Grayscale(1),
-    transforms.RandomHorizontalFlip(p=0.1),
-    transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.5),
-    transforms.ToTensor(),
-    StandardizeTransform() # add the standardization transform
+    transforms.RandomHorizontalFlip(p=0.3),
+    transforms.ToTensor()
     ])
 
 # Use our transform variable while downloading our images
@@ -97,78 +81,80 @@ class CNNModelV0(nn.Module):
                  output_shape: int):
         super().__init__()
         self.conv_block_1 = nn.Sequential(
-                nn.Conv2d(in_channels=input_shape,
-                          out_channels=hidden_units,
+                nn.Conv2d(in_channels=1,
+                          out_channels=9,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
+                nn.BatchNorm2d(9),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=hidden_units,
-                          out_channels=hidden_units,
+                nn.Conv2d(in_channels=9,
+                          out_channels=18,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
+                nn.BatchNorm2d(18, eps=1e-05, momentum=0.1, affine=True),
                 nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2)
+                nn.MaxPool2d(kernel_size=2, ceil_mode=False)
                     )
         self.conv_block_2 = nn.Sequential(
-                nn.Conv2d(in_channels=hidden_units,
-                          out_channels=hidden_units,
+                nn.Conv2d(in_channels=18,
+                          out_channels=18,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
+                nn.BatchNorm2d(18),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=hidden_units,
-                          out_channels=hidden_units,
+                nn.Conv2d(in_channels=18,
+                          out_channels=36,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2)
+                nn.BatchNorm2d(36, eps=1e-05, momentum=0.1, affine=True),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=2, ceil_mode=False)
                     )
               self.conv_block_3 = nn.Sequential(
-                nn.Conv2d(in_channels=hidden_units,
-                          out_channels=hidden_units,
+                nn.Conv2d(in_channels=36,
+                          out_channels=36,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
+                nn.BatchNorm2d(36, eps=1e-05, momentum=0.1, affine=True),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=hidden_units,
-                          out_channels=hidden_units,
+                nn.Conv2d(in_channels=36,
+                          out_channels=45,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2)
+                nn.BatchNorm2d(45),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=2, ceil_mode=False)
                     )
         self.conv_block_4 = nn.Sequential(
-                nn.Conv2d(in_channels=hidden_units,
-                          out_channels=hidden_units,
+                nn.Conv2d(in_channels=45,
+                          out_channels=45,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
-                nn.ReLU(),
-                nn.Conv2d(in_channels=hidden_units,
-                          out_channels=hidden_units,
+                nn.BatchNorm2d(45),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(in_channels=45,
+                          out_channels=45,
                           kernel_size=3,
                           padding=1,
                           stride=1),
-                nn.BatchNorm2d(hidden_units),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2)
+                nn.BatchNorm2d(45),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=2, ceil_mode=False)
         )
         
         self.classifier = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(in_features=hidden_units*64,
-                          out_features=output_shape)
+            nn.Flatten(),
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(in_features=180,
+                      out_features=output_shape,
+                      bias=True)
                 )
 
     # Passing our data through all the layers
@@ -181,13 +167,11 @@ class CNNModelV0(nn.Module):
         return x
 
 model_0 = CNNModelV0(input_shape=1,
-                     hidden_units=16,
                      output_shape=len(class_names)).to(device)
 
 # Setup loss function and optimizers
-l1_lambda = 0.001
 loss_fn = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(params=model_0.parameters(),
+optimizer = torch.optim.Adam(params=model_0.parameters(),
                             lr=0.01)
 
 # Create train and test step
@@ -195,8 +179,7 @@ def train_step(model: torch.nn.Module,
                dataloader: torch.utils.data,
                loss_fn: torch.nn.Module,
                optimizer: torch.optim.Optimizer,
-               accuracy_fn,
-               l1_lambda):
+               accuracy_fn):
     train_loss, train_acc = 0, 0
 
     # Loop throgh batches 
@@ -209,11 +192,6 @@ def train_step(model: torch.nn.Module,
         y_pred = model(X)
         # Calculate the loss 
         loss = loss_fn(y_pred, y)
-        # L1 regularization
-        l1_reg=0
-        for param in model_0.parameters():
-            l1_reg += torch.norm(param, p=2)
-        loss += l1_lambda * l1_reg
         train_loss += loss
         train_acc += accuracy_fn(y, y_pred.argmax(dim=1))
         # Set the gradients to zero for next iteration
@@ -253,15 +231,14 @@ def test_step(model: torch.nn.Module,
     print(f'Test loss: {test_loss:.4f}, Test acc: {test_acc:.2f}%')
 
 train_time_start = timer()
-epochs = 20
+epochs = 25
 for epoch in tqdm(range(epochs)):
     print(f'Epoch: {epoch}\n------------')
     train_step(model=model_0,
                dataloader=train_dataloader,
                loss_fn=loss_fn,
                optimizer=optimizer,
-               accuracy_fn=accuracy_fn,
-               l1_lambda=l1_lambda)
+               accuracy_fn=accuracy_fn)
     test_step(model=model_0,
               dataloader=test_dataloader,
               loss_fn=loss_fn,
@@ -270,25 +247,70 @@ train_time_end = timer()
 total_train_time = train_time_end-train_time_start
 print(f'Total train time: {total_train_time}')
 
-# create confusion matrix to visualize true values with labels
-model_0.eval()
-true_labels = []
-pred_labels = []
-for img, labels in test_dataloader:
-    img, = img.to(device)
-    labels = labels.to(device)
-    outputs = model_0(img)
-    _, preds = torch.max(outputs.data, 1)
-    true_labels.extend(labels.cpu().numpy())
-    pred_labels.extend(preds.cpu().numpy())
+# create confusion matrix
+def conv_matrix(self, dataloader):
+    model_0.eval()
+    true_labels = []
+    pred_labels = []
+    for img, labels in test_dataloader:
+        dfdf
+        img, = img.to(device)
+        labels = labels.to(device)
+        outputs = model_0(img)
+        _, preds = torch.max(outputs.data, 1)
+        true_labels.extend(labels.cpu().numpy())
+        pred_labels.extend(preds.cpu().numpy())
     
-# convert list to numpy 
-true_labels = np.array(true_labels)
-pred_labels = np.array(pred_labels)
+    # convert list to numpy 
+    true_labels = np.array(true_labels)
+    pred_labels = np.array(pred_labels)
 
-# compute cm
-cm = confusion_matrix(true_labels, pred_labels)
-print(cm)
+    # compute cm
+    cm = confusion_matrix(true_labels, pred_labels)
+    print(cm)
+    
+def make_predictions(model: torch.nn.Module,
+                     data: list,
+                     device: torch.device=device):
+    pred_probs = []
+    model.eval()
+    with torch.inference_mode():
+        for sample in data:
+            sample = torch.unsqueeze(sample, dim=0)
+            pred_logits = model(sample)
+            pred_prob = torch.softmax(pred_logits.squeeze(), dim=0)
+            pred_probs.append(pred_prob.cpu())
+            
+    return torch.stack(pred_probs)
+
+# get test samples
+test_samples, test_labels = [], []
+for sample, label in random.sample(list(test_data), k=9):
+    test_samples.append(sample)
+    test_labels.append(label)
+    
+pred_probs = make_predictions(model=model_0.cpu(),
+                              data=test_samples)
+
+pred_classes = pred_probs.argmax(dim=1)
+
+# show 3x3 plot with predicted labels next to true labels
+plt.figure(figsize=(9,9))
+nrows = 3
+nclows = 3
+for i, sample in enumerate(test_samples):
+    plt.subplot(nrows, ncols, i+1)
+    plt.imshow(sample[0,:,:], cmap='gray')
+    pred_label = class_names[pred_classes[i]]
+    truth_label = class_names[test_labels[i]]
+    title_text = f'Pred: {pred_label} | Truth: {truth_label}'
+    
+if pred_label == truth_label:
+    plt.title(title_text, fontsize=10, c='g')
+else:
+    plt.title(title_text, fontsize=10, c='r')
+    
+plt.show()
 
 
 
