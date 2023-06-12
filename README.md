@@ -1,7 +1,7 @@
 # StandfordDogs
 
-83.50% on Training data
-74.03% on Testing data
+85.25% on Training data
+80.52% on Testing data
 Does overfit a bit so will continue to imporove it as I learn more.
 
 MPS and BatchNorm2d for faster training. 
